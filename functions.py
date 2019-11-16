@@ -345,47 +345,52 @@ def search_2(query, top, inverted_index_2, stop_words, df_movies):
     doc_norm = load_doc_norm()
     return top_k(search_with_tfidf(query, inverted_index_2, doc_norm, stop_words, vocabulary), top, df_movies)
 
-def createInvertedIndex2(stop_words, vocabulary):
-  inverted_index_2 = defaultdict(list)
-  i = 1
-  doc_number = 30001
-  doc_norm = defaultdict(list)
+def create_inverted_index_2(fields, norm_file=None, index_file=None):
+    inverted_index_2 = defaultdict(list)
+    i = 1
+    doc_number = 10000
+    doc_norm = defaultdict(list)
 
-  for file_id in range(1, doc_number):
-      fname = f'tsv/{file_id}.tsv'
-      if os.path.isfile(fname):
-          text = data_from_tsv(fname, [1,2])
-          
-          #  Extract usefull terms from text 
-          words = processWords(text, stop_words)
-          
-          #  Convert text represantion of words into ids of vacabulary
-          words = words_into_id(words, vocabulary)
-          
-          #  Create the frequency dicionary 'term: count'
-          counter = Counter(words)
-          
-          for word_id, tf in counter.items():
-              inverted_index_2[word_id].append([file_id, tf ])
-              doc_norm[file_id].append((word_id, tf))
-          
-  #  Construct documets norms
-  for file_id in doc_norm:
-      norm = 0
-      for word_id, tf in doc_norm[file_id]:
-          norm += (tf * get_idf(word_id,inverted_index_2, doc_number)) ** 2
-      doc_norm[file_id] = math.sqrt(norm)
-      
-  #  Store norms of documents as json
-  with open('document_norm.json', 'w') as fp:
-      json.dump(doc_norm, fp)
-          
-  #  Mutiplying each tf by corresponding idf
-  for word_id in inverted_index_2:
-      for i in range(len(inverted_index_2[word_id])):
-          inverted_index_2[word_id][i][1] *= get_idf(word_id,inverted_index_2, doc_number)
-          inverted_index_2[word_id][i] = tuple(inverted_index_2[word_id][i])
-      
-  #  Store inverted index as json
-  with open('inverted_index_2.json', 'w') as fp:
-      json.dump(inverted_index_2, fp)
+    for file_id in range(1, doc_number):
+        fname = f'data/{file_id}.tsv'
+        if os.path.isfile(fname):
+            text = data_from_tsv(fname, fields)
+
+            #  Extract usefull terms from text 
+            words = processWords(text, stop_words)
+
+            #  Convert text represantion of words into ids of vacabulary
+            words = words_into_id(words)
+
+            #  Create the frequency dicionary 'term: count'
+            counter = Counter(words)
+
+            for word_id, tf in counter.items():
+                inverted_index_2[word_id].append([file_id, tf ])
+                doc_norm[file_id].append((word_id, tf))
+
+
+    #  Construct documets norms
+    for file_id in doc_norm:
+        norm = 0
+        for word_id, tf in doc_norm[file_id]:
+            norm += (tf * get_idf(word_id,inverted_index_2, doc_number)) ** 2
+        doc_norm[file_id] = math.sqrt(norm)
+
+    if norm_file:
+        #  Store norms of documents as json
+        with open(norm_file, 'w') as fp:
+            json.dump(doc_norm, fp)
+
+    #  Mutiplying each tf by corresponding idf
+    for word_id in inverted_index_2:
+        for i in range(len(inverted_index_2[word_id])):
+            inverted_index_2[word_id][i][1] *= get_idf(word_id,inverted_index_2, doc_number)
+            inverted_index_2[word_id][i] = tuple(inverted_index_2[word_id][i])
+
+    if index_file:
+        #  Store inverted index as json
+        with open(index_file, 'w') as fp:
+            json.dump(inverted_index_2, fp)
+
+    return inverted_index_2, doc_norm
