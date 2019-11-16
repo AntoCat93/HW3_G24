@@ -223,19 +223,27 @@ def query_tfids(words_ids, inverted_index, doc_number):
     counter = Counter(words_ids)
     return [(num) * get_idf(word_id, inverted_index, doc_number) for word_id, num in counter.items()]
 
-def load_inverted_index_2():
+def load_inverted_index_2(convert_keys=True):
     #  Load inverted index 2
     with open('inverted_index_2.json', 'r') as fp:
+        if convert_keys:
+            return convert_keys_to_int(json.load(fp))
         return json.load(fp)
 
-def load_doc_norm():
+def load_doc_norm(convert_keys=True):
     with open('document_norm.json', 'r') as fp:
+        if convert_keys:
+            return convert_keys_to_int(json.load(fp))
         return json.load(fp)
 
 def load_vocabulary():
     with open('vocabulary.json', 'r') as fp:
-        return json.load(fp)
-        
+        voc = json.load(fp)
+    return voc
+
+def convert_keys_to_int(d):
+    return {int(key):val for key, val in d.items() }
+                       
 def filter_documents(processed_input_id, inverted_index):
     """ The function finds all documnets that contains all the words in the query.
     The function maintain cur_index list containing current location of pointer for each list of documents.
@@ -245,7 +253,7 @@ def filter_documents(processed_input_id, inverted_index):
     
     """
     #  Keep index only for required terms (query terms)
-    filtered_index = [inverted_index[str(term_id)] for term_id in processed_input_id]
+    filtered_index = [inverted_index[term_id] for term_id in processed_input_id]
     
     #  Get the max document id of first elements of filtered index
     max_doc_id = max([r[0] for r in filtered_index])[0]
@@ -276,6 +284,30 @@ def filter_documents(processed_input_id, inverted_index):
             max_doc_id = max(first_docs)[0]
 
     return result
+
+
+def not_strict_filter_documents(processed_input_id, inverted_index):
+    """ The function finds all documents that contains at least one query terms.
+    It return a list of list of tuples (document_id, tfidf) 
+    """
+    docs = defaultdict(dict)
+    i = -1
+    for term_id in processed_input_id:
+        i += 1
+        for doc_id, tfidf in inverted_index[term_id]:
+            docs[doc_id][i] = tfidf
+    
+    result = []
+    for doc_id in docs:
+        row = []
+        for i in range(len(processed_input_id)):
+            if i in docs[doc_id]:
+                row.append((doc_id, docs[doc_id][i]))
+            else:
+                row.append((doc_id, 0))
+        result.append(row)
+                
+    return result
         
 
 def cosine(docs_data, query_data, doc_norm):
@@ -293,28 +325,42 @@ def cosine(docs_data, query_data, doc_norm):
     #  Don't need to divide on query norm since it is the same for all documents
     return docs_data[0][0], res / (doc_norm[str(docs_data[0][0])])
     
-def search_with_tfidf(search_input, inverted_index, doc_norm, stop_words, vocabulary):
+def search_with_tfidf(search_input, inverted_index, doc_norm, as_heap = True, strict_terms_filter=True, additional_score = None):
     """  The function transform search input to vocabulary ids, filter documents by search terms and
     calculate cosine similarity. 
     """
-    doc_number = 30001
     processed_input = processWords(search_input, stop_words)
-    processed_input_id = [vocabulary[w] for w in processed_input if w in vocabulary]
-    filtered_docs = filter_documents(processed_input_id, inverted_index)
-    query_data = query_tfids(processed_input_id, inverted_index, doc_number)
+    processed_input_id = [vocabulary[w] for w in processed_input if w in vocabulary and vocabulary[w] in inverted_index]
+    
+    if strict_terms_filter:
+        filtered_docs = filter_documents(processed_input_id, inverted_index)
+    else:
+        #  Filter all documents that contain at leats one query term. It used in task 3 for film names
+        filtered_docs = not_strict_filter_documents(processed_input_id, inverted_index)
+        
+    query_data = query_tfids(processed_input_id, inverted_index_2, doc_number)
     
     result = []
     
     for i in range(len(filtered_docs)):
         data = cosine(filtered_docs[i], query_data, doc_norm)
-        doc_id = data[0] 
+        doc_id = data[0]
+        score = data[1]
+        
+        #  Additions score for the task 3
+        if additional_score and doc_id in additional_score:
+            score += additional_score[doc_id]
         
         #  Pusshing element in a min heap with negative score which makes the heap - max heap 
-        heappush(result, (-data[1], doc_id ))
+        heappush(result, (-score, doc_id ))
+
+    #  Return dictionaty if as_heap flag is False. It is used in task 3 for film names
+    if not as_heap:
+        return {doc_id:abs(score) for score, doc_id in result}
         
     return result
 
-def top_k(heap_result, k, df_movies, as_html = True):
+def top_k(heap_result, k, as_html = True):
     """ Returns the top-k or all results, if k is greater than total number of result, in dataframe 
     """
     top_res = []
@@ -324,10 +370,10 @@ def top_k(heap_result, k, df_movies, as_html = True):
         score = abs(raw[0])
        
         doc_id = raw[1]
-        file_name = f'tsv/{doc_id}.tsv'
+        file_name = f'data/{doc_id}.tsv'
         title, intro = data_from_tsv(file_name, [0, 1], as_text = False)
         
-        top_res.append((score, title, intro, df_movies.iloc[doc_id-1]['URL']))
+        top_res.append((score, title, intro, df_movies1.iloc[doc_id-1]['URL']))
     
     top_res = pd.DataFrame(top_res)
     top_res.columns = ['Score', 'Title', 'Intro', 'URL']
@@ -340,10 +386,8 @@ def top_k(heap_result, k, df_movies, as_html = True):
         
     return top_res
 
-def search_2(query, top, inverted_index_2, stop_words, df_movies):
-    vocabulary = load_vocabulary()
-    doc_norm = load_doc_norm()
-    return top_k(search_with_tfidf(query, inverted_index_2, doc_norm, stop_words, vocabulary), top, df_movies)
+def search_2(query, top = 10):
+    return top_k(search_with_tfidf(query, inverted_index_2, doc_norm), top)
 
 def create_inverted_index_2(fields, norm_file=None, index_file=None):
     inverted_index_2 = defaultdict(list)
