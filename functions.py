@@ -1,7 +1,6 @@
 from bs4 import BeautifulSoup
 import requests
 import re
-import os.path
 import pandas as pd
 import time
 from time import sleep
@@ -93,26 +92,6 @@ def createTsv():
             content += f"{title} \t {blocks['info']} \t {blocks['plot']} \t {film_name} \t {add_info_text}" + '\n'
             file.write(content)
             
-
-def createDfFromHtml(movies):
-    with open(movies, encoding="utf-8") as f:
-        data = f.read()
-    soup = BeautifulSoup(data, 'html.parser')
-    table_rows = soup.findAll('tr')
-    l = []
-    for tr in table_rows:
-        td = tr.find_all('td')
-        row = [tr.text for tr in td]
-        l.append(row)
-    df = pd.DataFrame(l, columns=["ID", "URL"])
-    df = df.drop(0)
-    return df
-    
-def saveMoviesHtml(df_movies, headers):
-    for index, el in df_movies.iterrows():
-        resp = requests.get(el["URL"], headers)
-        if resp.status_code == 200:
-            open('movies//movie_'+el["ID"]+'.html', 'wb+').write(resp.content)
 
 def processWords(line, stop_words):
     tokenizer = RegexpTokenizer(r'\w+')
