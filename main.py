@@ -25,9 +25,10 @@ def search_2(query, top = 10):
 def search_3(query, top = 10):
     #  as_heap = False ==> returns scores as dictionary {document_id : score}
     #  strict_terms_filter = False ==> tells function to use not_strict_filter_documents
+    add_query = input("Insert 'year:YYYY' or 'language: Language' to add additional info for the search \n")
     name_results = search_with_tfidf(query, vocabulary, name_index, doc_norm, as_heap=False, strict_terms_filter=False)
     #  additional_score will be added to scores with the same document id, we give a point if 
-    additional_points = getAdditionalScore(name_results, input("Insert 'year:YYYY' or 'language: Language' to add additional info for the search \n"), df_movies)
+    additional_points = getAdditionalScore(name_results, add_query, df_movies)
     additional_score = {key: name_results.get(key, 0) + additional_points.get(key, 0) for key in set(name_results) | set(additional_points)}
     search_results = search_with_tfidf(query, vocabulary, inverted_index_2, doc_norm, additional_score=additional_score)
     return top_k(search_results, df_movies, top)
