@@ -1,7 +1,10 @@
 from utils import *
 
-vocabulary = load_vocabulary()
+with open('df_movies.json', 'r') as fp:
+    df_movies = pd.read_json(json.load(fp))
 
+
+vocabulary = load_vocabulary()
 
 
 inverted_index = load_inverted_index_1()

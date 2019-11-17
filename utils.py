@@ -109,7 +109,7 @@ def words_into_id(words, vocabulary):
     return [vocabulary[w] for w in words]
 
 
-def search_1(search_input, vocabulary, stop_words, inverted_index):
+def search_no_score(search_input, vocabulary, stop_words, inverted_index):
     processed_input = processWords(search_input, stop_words)
     processed_input_id = [vocabulary[w] for w in processed_input if w in vocabulary]
     results = set.intersection(*[set(inverted_index[term_id]) for term_id in processed_input_id])
