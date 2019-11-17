@@ -32,10 +32,10 @@ def search_3(query, top = 10):
     search_results = search_with_tfidf(query, vocabulary, inverted_index_2, doc_norm, additional_score=additional_score)
     return top_k(search_results, df_movies, top)
     
-def search(i, query, top):
+def search(i, query, top = 10):
     if i == 1:
-      search_1(query, top)
+         return search_1(query, top)
     elif i == 2:
-      search_2(query, top)
+         return search_2(query, top)
     elif i == 3:
-      search_3(query, top)
+         return search_3(query, top)
