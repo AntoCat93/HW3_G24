@@ -362,3 +362,75 @@ def top_k(heap_result, df_movies, k, no_score=False):
         
     return top_res
 
+def getAdditionalScore(df_search, additional_query, df_movies):
+    df_movies.ID = df_movies.ID.astype(int)
+    res = df_movies[df_movies.ID.isin(list(df_search.keys()))]
+    additional_query_params = [x.strip() for x in additional_query.split(sep = ':')]
+    if additional_query_params[0] == "year":
+        res = res.assign(year = res["ID"].apply(addInfoYear))
+        res = res.assign(diff_years = res["year"].apply(lambda x:addDiffYears( x, additional_query_params[1])))
+        res = res.assign(points = res["diff_years"].apply(lambda x: addYearsPoints(x, res["diff_years"])))
+    elif additional_query_params[0] == "language":
+        res = res.assign(language = res["ID"].apply(addInfoLanguage))
+        res = res.assign(points = res["language"].apply(lambda x: addLanguagePoints(x, additional_query_params[1])))
+    elif additional_query_params[0] == "":
+        res = res.assign(points = 0)
+        print("No additional query")
+    elif additional_query_params[0] == "":
+        res = res.assign(points = 0)
+        print("Additional query not valid!")
+    additional_score = {}
+    for index, row in res.iterrows():
+        additional_score[row["ID"]] = row["points"]
+    return additional_score
+
+def addInfoYear(film_id):
+    filename = f'tsv/{film_id}.tsv'
+    film_data = pd.read_csv(filename, sep='\t', dtype=str, engine='python')
+    release_date = film_data.iloc[0][" release date "]
+    if "(" in release_date: 
+        year =  release_date.split("(")[0].strip()[-4:]
+        if len(year) == 4:
+            return int(year)
+    elif len(release_date.strip()) == 4:
+        return int(release_date.strip())
+    elif "," in release_date:
+        year =  release_date.split(",")[1].strip()[-4:]
+        if len(year) == 4:
+            return int(year)
+    elif " " in release_date.strip():
+        info_date =  release_date.strip().split(" ")
+        year = info_date[len(info_date) - 1].strip()
+        if len(year) == 4:
+            return int(year)
+    return "NA"
+    
+def addInfoLanguage(film_id):
+    filename = f'tsv/{film_id}.tsv'
+    film_data = pd.read_csv(filename, sep='\t', dtype=str, engine='python')
+    language = film_data.iloc[0][" language "]
+    if language == "NA": 
+        country = film_data.iloc[0][" country "]
+        if country in ["United States", "England"]:
+            return "English"
+    else:
+        return language
+    return "NA"
+         
+def addDiffYears(film_year, film_query):
+    diff = abs(film_year - int(film_query))
+    return diff
+    
+def addLanguagePoints(language_code, language_query):
+    if language_code.strip() == language_query.strip():
+        return 1
+    else:
+        return 0
+    
+def addYearsPoints(current_diff, diff_years):
+    max_diff = max(diff_years.values)
+    if max_diff == 0:
+        return 1
+    else:
+        return 1 - (current_diff / max_diff)    
+    
