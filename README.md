@@ -16,3 +16,12 @@
 * `exercise_4.py`: python file that contains the implementation of the algorithm that solves problem 4.
 
 * `main.ipynb`: a notebook file where search functions should be tested
+
+## Json files required
+
+* `document_norm.json`, 
+* `inverted_index_2.json`, 
+* `inverted_index.json`,
+* `name_index.json`, 
+* `name_norm.json`, 
+* `vocabulary.json`
