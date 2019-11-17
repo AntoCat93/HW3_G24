@@ -19,6 +19,8 @@ import math
 from heapq import *
 from IPython.core.display import HTML
 
+stop_words = set(stopwords.words('english'))
+
 def remove_chars(text):
     return re.sub(r'[\t\n]+?', ' ', text)
 
@@ -77,19 +79,20 @@ def createTsv():
         film_name = re.sub('\([^\)]*?film[^\)]*?\)\s*?$','',title)
         print(film_name)
 
-        required_fields = ['directed by', 'produced by', 'written by', 'starring', 'music by', 'release date', 'running time', 'country', 'language', 'budget']
+        required_fields = ['directed by', 'produced by', 'written by', 'starring', 'music by', 
+                           'release date', 'running time', 'country', 'language', 'budget']
         for field in required_fields:
             if field not in additional_info:
                 additional_info[field] = 'NA'
 
         add_info_text = ' \t '.join(additional_info[field] for field in required_fields)
 
-        tsv_file_name = f'data/{file_id}.tsv'
+        tsv_file_name = f'tsv/{file_id}.tsv'
         with open(tsv_file_name, 'w') as file:
             content = 'title \t info \t plot \t name \t ' + ' \t '.join(field for field in required_fields) + '\n'
             content += f"{title} \t {blocks['info']} \t {blocks['plot']} \t {film_name} \t {add_info_text}" + '\n'
             file.write(content)
-        #break
+            
 
 def createDfFromHtml(movies):
     with open(movies, encoding="utf-8") as f:
@@ -142,7 +145,7 @@ def createVocabulary(stop_words):
 def words_into_id(words, vocabulary):
     return [vocabulary[w] for w in words]
 
-def createInvertedIndex(vocabulary, stop_words):
+def createInvertedIndex(vocabulary):
     inverted_index = defaultdict(set)
     i = 1
     for file_id in range(1,30001):
@@ -159,13 +162,15 @@ def createInvertedIndex(vocabulary, stop_words):
 
     with open('inverted_index.json', 'w') as fp:
         json.dump(inverted_index, fp)
+        
+    return inverted_index
 
 def search_1(search_input, vocabulary, stop_words, inverted_index):
     processed_input = processWords(search_input, stop_words)
     processed_input_id = [vocabulary[w] for w in processed_input if w in vocabulary]
-    print(processed_input)
-    print(processed_input_id)
-    return set.intersection(*[set(inverted_index[str(term_id)]) for term_id in processed_input_id])
+    results = set.intersection(*[set(inverted_index[term_id]) for term_id in processed_input_id])
+    results = [(0, doc_id) for doc_id in results]
+    return results
 
 
 def text_from_tsv(file_name, col_names, as_text = True):
@@ -221,7 +226,7 @@ def data_from_tsv(file_name, col_ids, as_text = True):
             return data
 
 def get_idf(word_id, inverted_index_2, doc_number):
-    Nt = len(inverted_index_2[str(word_id)])
+    Nt = len(inverted_index_2[word_id])
     return math.log(doc_number/Nt, 10)
 
 def query_tfids(words_ids, inverted_index, doc_number):
@@ -229,6 +234,14 @@ def query_tfids(words_ids, inverted_index, doc_number):
     """
     counter = Counter(words_ids)
     return [(num) * get_idf(word_id, inverted_index, doc_number) for word_id, num in counter.items()]
+
+
+def load_inverted_index_1(convert_keys=True):
+    #  Load inverted index 1
+    with open('inverted_index.json', 'r') as fp:
+        if convert_keys:
+            return convert_keys_to_int(json.load(fp))
+        return json.load(fp)
 
 def load_inverted_index_2(convert_keys=True):
     #  Load inverted index 2
@@ -330,9 +343,10 @@ def cosine(docs_data, query_data, doc_norm):
         query_len += query_data[i] ** 2
     
     #  Don't need to divide on query norm since it is the same for all documents
-    return docs_data[0][0], res / (doc_norm[str(docs_data[0][0])])
+    return docs_data[0][0], res / (doc_norm[docs_data[0][0]])
     
-def search_with_tfidf(search_input, inverted_index, doc_norm, as_heap = True, strict_terms_filter=True, additional_score = None):
+def search_with_tfidf(search_input, vocabulary, inverted_index, doc_norm, as_heap = True, 
+                      strict_terms_filter=True, additional_score = None):
     """  The function transform search input to vocabulary ids, filter documents by search terms and
     calculate cosine similarity. 
     """
@@ -345,7 +359,7 @@ def search_with_tfidf(search_input, inverted_index, doc_norm, as_heap = True, st
         #  Filter all documents that contain at leats one query term. It used in task 3 for film names
         filtered_docs = not_strict_filter_documents(processed_input_id, inverted_index)
         
-    query_data = query_tfids(processed_input_id, inverted_index_2, doc_number)
+    query_data = query_tfids(processed_input_id, inverted_index, len(doc_norm))
     
     result = []
     
@@ -367,7 +381,7 @@ def search_with_tfidf(search_input, inverted_index, doc_norm, as_heap = True, st
         
     return result
 
-def top_k(heap_result, k, as_html = True):
+def top_k(heap_result, df_movies, k, no_score=False):
     """ Returns the top-k or all results, if k is greater than total number of result, in dataframe 
     """
     top_res = []
@@ -377,33 +391,36 @@ def top_k(heap_result, k, as_html = True):
         score = abs(raw[0])
        
         doc_id = raw[1]
-        file_name = f'data/{doc_id}.tsv'
+        file_name = f'tsv/{doc_id}.tsv'
         title, intro = data_from_tsv(file_name, [0, 1], as_text = False)
         
-        top_res.append((score, title, intro, df_movies1.iloc[doc_id-1]['URL']))
+        top_res.append((score, title, intro, df_movies.iloc[doc_id-1]['URL']))
     
     top_res = pd.DataFrame(top_res)
+    
     top_res.columns = ['Score', 'Title', 'Intro', 'URL']
-    if as_html: 
-        #   Show firts 200 characters of intro
-        top_res['Intro'] = top_res['Intro'].str.slice(0,200) +' ...'
-        
-        #  Formating columns so URL can be shown as hyperlink
-        top_res = top_res.style.format({'Score': "{:.2f}", 'URL': lambda x: f"<a target=_blank href='{x}'>{x}</a>"})
+
+    #   Show firts 200 characters of intro
+    top_res['Intro'] = top_res['Intro'].str.slice(0,200) +' ...'
+    
+    if no_score:
+        top_res.drop(columns=['Score'], inplace=True)
+
+    #  Formating columns so URL can be shown as hyperlink
+    top_res = top_res.style.format({'Score': "{:.2f}", 'URL': lambda x: f"<a target=_blank href='{x}'>{x}</a>"})
+    
         
     return top_res
 
-def search_2(query, top = 10):
-    return top_k(search_with_tfidf(query, inverted_index_2, doc_norm), top)
 
-def create_inverted_index_2(fields, norm_file=None, index_file=None):
+def create_inverted_index_2(fields, vocabulary, norm_file=None, index_file=None):
     inverted_index_2 = defaultdict(list)
     i = 1
     doc_number = 10000
     doc_norm = defaultdict(list)
 
     for file_id in range(1, doc_number):
-        fname = f'data/{file_id}.tsv'
+        fname = f'tsv/{file_id}.tsv'
         if os.path.isfile(fname):
             text = data_from_tsv(fname, fields)
 
@@ -411,7 +428,7 @@ def create_inverted_index_2(fields, norm_file=None, index_file=None):
             words = processWords(text, stop_words)
 
             #  Convert text represantion of words into ids of vacabulary
-            words = words_into_id(words)
+            words = words_into_id(words, vocabulary)
 
             #  Create the frequency dicionary 'term: count'
             counter = Counter(words)
@@ -436,7 +453,7 @@ def create_inverted_index_2(fields, norm_file=None, index_file=None):
     #  Mutiplying each tf by corresponding idf
     for word_id in inverted_index_2:
         for i in range(len(inverted_index_2[word_id])):
-            inverted_index_2[word_id][i][1] *= get_idf(word_id,inverted_index_2, doc_number)
+            inverted_index_2[word_id][i][1] *= get_idf(word_id,inverted_index_2, len(doc_norm))
             inverted_index_2[word_id][i] = tuple(inverted_index_2[word_id][i])
 
     if index_file:
