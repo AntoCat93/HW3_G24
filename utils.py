@@ -180,6 +180,12 @@ def query_tfids(words_ids, inverted_index, doc_number):
     return [(num) * get_idf(word_id, inverted_index, doc_number) for word_id, num in counter.items()]
 
 
+def load_from_json(file_name):
+    with open(file_name, 'r') as fp:
+        if convert_keys:
+            return convert_keys_to_int(json.load(fp))
+        return json.load(fp)
+
 def load_inverted_index_1(convert_keys=True):
     #  Load inverted index 1
     with open('inverted_index.json', 'r') as fp:

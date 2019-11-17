@@ -1,3 +1,5 @@
+from utils import *
+
 def createVocabulary(stop_words):
     vocabulary = {}
     i = 1
